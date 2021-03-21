@@ -54,6 +54,47 @@ def compute_integral_unbiased(model, data, time, non_pad_mask, type_mask):
     unbiased_integral = all_lambda * diff_time
     return unbiased_integral
 
+def compute_integral_unbiased_jhu(model, data, types, time, non_pad_mask, type_mask):
+    """ Log-likelihood of non-events, using Monte Carlo integration. """
+
+    num_samples = 100
+    step = 4
+
+    diff_time = (time[:, 1:] - time[:, :-1]) * non_pad_mask[:, 1:]
+    temp_time = diff_time.unsqueeze(0) * \
+                torch.rand([num_samples, *diff_time.size()], device=data.device)
+    temp_time /= (time[:, :-1] + 1).unsqueeze(0)
+
+    all_lambda = []
+    batch_size = types.size(0)
+    seq_len = diff_time.size(1)
+
+
+    for i in range(0, num_samples, step):
+        _extra_time = temp_time[i: i + step, :, :]
+        _step = _extra_time.size(0)
+        # _buf_time = []
+        # for j in range(_step):
+        #     _buf_time.append(_extra_time[:, :, j])
+        _extra_time = _extra_time.reshape(_step * batch_size, -1)
+        # _extra_time = _extra_time.transpose(2, 1).reshape(-1, temp_time.size(1))
+        _types = types.expand(_step, -1, -1).reshape(_step * batch_size, -1)
+        _times = time.expand(_step, -1, -1).reshape(_step * batch_size, -1)
+        # _times = torch.cat([time] * _extra_time.size(2), dim=0)
+        _enc_output, prediction = model(_types[:, :-1], _times[:, :-1], _extra_time)
+        all_lambda.append(softplus(model.linear(_enc_output), model.beta).reshape(_step, batch_size, seq_len, -1))
+    all_lambda = torch.cat(all_lambda, dim=0).sum(dim=0)
+    # all_lambda = _ret.sum(dim=2) * temp_time / num_samples
+
+
+    # temp_hid = model.linear(data)[:, 1:, :]
+    # temp_hid = torch.sum(temp_hid * type_mask[:, 1:, :], dim=2, keepdim=True)
+    #
+    # all_lambda = softplus(temp_hid + model.alpha * temp_time, model.beta)
+    all_lambda = torch.sum(all_lambda, dim=2) / num_samples
+
+    unbiased_integral = all_lambda * diff_time
+    return unbiased_integral
 
 def log_likelihood(model, data, time, types):
     """ Log-likelihood of sequence. """
@@ -74,7 +115,8 @@ def log_likelihood(model, data, time, types):
 
     # non-event log-likelihood, either numerical integration or MC integration
     # non_event_ll = compute_integral_biased(type_lambda, time, non_pad_mask)
-    non_event_ll = compute_integral_unbiased(model, data, time, non_pad_mask, type_mask)
+    # non_event_ll = compute_integral_unbiased(model, data, time, non_pad_mask, type_mask)
+    non_event_ll = compute_integral_unbiased_jhu(model, data, types, time, non_pad_mask, type_mask)
     non_event_ll = torch.sum(non_event_ll, dim=-1)
 
     return event_ll, non_event_ll

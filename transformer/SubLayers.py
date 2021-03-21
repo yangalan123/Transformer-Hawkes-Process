@@ -58,11 +58,11 @@ class MultiHeadAttention(nn.Module):
         # Transpose to move the head dimension back: b x lq x n x dv
         # Combine the last two dimensions to concatenate all the heads together: b x lq x (n*dv)
         output = output.transpose(1, 2).contiguous().view(sz_b, len_q, -1)
-        output = self.dropout(self.fc(output))
-        output += residual
+        # output = self.dropout(self.fc(output))
+        # output += residual
 
-        if not self.normalize_before:
-            output = self.layer_norm(output)
+        # if not self.normalize_before:
+        #     output = self.layer_norm(output)
         return output, attn
 
 

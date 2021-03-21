@@ -30,7 +30,7 @@ def get_subsequent_mask(seq):
 
     sz_b, len_s = seq.size()
     subsequent_mask = torch.triu(
-        torch.ones((len_s, len_s), device=seq.device, dtype=torch.uint8), diagonal=1)
+        torch.ones((len_s, len_s), device=seq.device, dtype=torch.uint8), diagonal=0)
     subsequent_mask = subsequent_mask.unsqueeze(0).expand(sz_b, -1, -1)  # b x ls x ls
     return subsequent_mask
 
@@ -41,21 +41,21 @@ class Encoder(nn.Module):
     def __init__(
             self,
             num_types, d_model, d_inner,
-            n_layers, n_head, d_k, d_v, dropout):
+            n_layers, n_head, d_k, d_v, dropout, d_time):
         super().__init__()
 
         self.d_model = d_model
 
         # position vector, used for temporal encoding
         self.position_vec = torch.tensor(
-            [math.pow(10000.0, 2.0 * (i // 2) / d_model) for i in range(d_model)],
+            [math.pow(10000.0, 2.0 * (i // 2) / d_time) for i in range(d_time)],
             device=torch.device('cuda'))
 
         # event type embedding
         self.event_emb = nn.Embedding(num_types + 1, d_model, padding_idx=Constants.PAD)
 
         self.layer_stack = nn.ModuleList([
-            EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout, normalize_before=False)
+            EncoderLayer(d_model + d_time, d_inner, n_head, d_k, d_v, dropout=dropout, normalize_before=False)
             for _ in range(n_layers)])
 
     def temporal_enc(self, time, non_pad_mask):
@@ -69,7 +69,7 @@ class Encoder(nn.Module):
         result[:, :, 1::2] = torch.cos(result[:, :, 1::2])
         return result * non_pad_mask
 
-    def forward(self, event_type, event_time, non_pad_mask):
+    def forward(self, event_type, event_time, non_pad_mask, extra_times=None):
         """ Encode event sequences via masked self-attention. """
 
         # prepare attention masks
@@ -80,15 +80,36 @@ class Encoder(nn.Module):
         slf_attn_mask = (slf_attn_mask_keypad + slf_attn_mask_subseq).gt(0)
 
         tem_enc = self.temporal_enc(event_time, non_pad_mask)
-        enc_output = self.event_emb(event_type)
+        enc_input = torch.tanh(self.event_emb(event_type))
+        # layer_ = torch.cat([torch.zeros_like(enc_input), tem_enc], dim=-1)
+        layer_ = torch.zeros_like(enc_input)
+        layer_mask = (torch.eye(slf_attn_mask.size(1)) < 1).unsqueeze(0).expand_as(slf_attn_mask).to(slf_attn_mask.device)
+        if extra_times is None:
+            tem_enc_layer = tem_enc
+        else:
+            tem_enc_layer = self.temporal_enc(extra_times, non_pad_mask)
+        # batch_size * (seq_len) * (2 * seq_len)
+        _combined_mask = torch.cat([slf_attn_mask, layer_mask], dim=-1)
+        # batch_size * (2 * seq_len) * (2 * seq_len)
+        _combined_mask = torch.cat([_combined_mask, torch.ones_like(_combined_mask)], dim=1)
+        enc_input = torch.cat([enc_input, tem_enc], dim=-1)
+        _combined_non_pad_mask = torch.cat([non_pad_mask, torch.zeros_like(non_pad_mask)], dim=1)
 
         for enc_layer in self.layer_stack:
-            enc_output += tem_enc
+            # enc_output, _ = enc_layer(
+            #     enc_input,
+            #     non_pad_mask=non_pad_mask,
+            #     slf_attn_mask=slf_attn_mask)
+            layer_ = torch.cat([layer_, tem_enc_layer], dim=-1)
+            _combined_input = torch.cat([enc_input, layer_], dim=1)
             enc_output, _ = enc_layer(
-                enc_output,
-                non_pad_mask=non_pad_mask,
-                slf_attn_mask=slf_attn_mask)
-        return enc_output
+                _combined_input,
+                non_pad_mask=_combined_non_pad_mask,
+                slf_attn_mask=_combined_mask)
+            layer_ = torch.tanh(enc_output[:, :enc_input.size(1), :])
+        # print(enc_output.shape)
+        # return enc_output
+        return layer_
 
 
 class Predictor(nn.Module):
@@ -135,7 +156,7 @@ class Transformer(nn.Module):
     def __init__(
             self,
             num_types, d_model=256, d_rnn=128, d_inner=1024,
-            n_layers=4, n_head=4, d_k=64, d_v=64, dropout=0.1):
+            n_layers=4, n_head=4, d_k=64, d_v=64, dropout=0.1, d_time=10):
         super().__init__()
 
         self.encoder = Encoder(
@@ -147,6 +168,7 @@ class Transformer(nn.Module):
             d_k=d_k,
             d_v=d_v,
             dropout=dropout,
+            d_time=d_time
         )
 
         self.num_types = num_types
@@ -161,7 +183,7 @@ class Transformer(nn.Module):
         self.beta = nn.Parameter(torch.tensor(1.0))
 
         # OPTIONAL recurrent layer, this sometimes helps
-        self.rnn = RNN_layers(d_model, d_rnn)
+        # self.rnn = RNN_layers(d_model, d_rnn)
 
         # prediction of next time stamp
         self.time_predictor = Predictor(d_model, 1)
@@ -169,12 +191,13 @@ class Transformer(nn.Module):
         # prediction of next event type
         self.type_predictor = Predictor(d_model, num_types)
 
-    def forward(self, event_type, event_time):
+    def forward(self, event_type, event_time, extra_times=None):
         """
         Return the hidden representations and predictions.
         For a sequence (l_1, l_2, ..., l_N), we predict (l_2, ..., l_N, l_{N+1}).
         Input: event_type: batch*seq_len;
                event_time: batch*seq_len.
+               extra_time: batch*seq_len. (used to compute non-event intensities)
         Output: enc_output: batch*seq_len*model_dim;
                 type_prediction: batch*seq_len*num_classes (not normalized);
                 time_prediction: batch*seq_len.
@@ -182,8 +205,8 @@ class Transformer(nn.Module):
 
         non_pad_mask = get_non_pad_mask(event_type)
 
-        enc_output = self.encoder(event_type, event_time, non_pad_mask)
-        enc_output = self.rnn(enc_output, non_pad_mask)
+        enc_output = self.encoder(event_type, event_time, non_pad_mask, extra_times)
+        # enc_output = self.rnn(enc_output, non_pad_mask)
 
         time_prediction = self.time_predictor(enc_output, non_pad_mask)
 
