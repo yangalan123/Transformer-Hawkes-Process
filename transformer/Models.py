@@ -91,9 +91,9 @@ class Encoder(nn.Module):
         # batch_size * (seq_len) * (2 * seq_len)
         _combined_mask = torch.cat([slf_attn_mask, layer_mask], dim=-1)
         # batch_size * (2 * seq_len) * (2 * seq_len)
-        _combined_mask = torch.cat([_combined_mask, torch.ones_like(_combined_mask)], dim=1)
+        _combined_mask = torch.cat([torch.ones_like(_combined_mask), _combined_mask], dim=1)
         enc_input = torch.cat([enc_input, tem_enc], dim=-1)
-        _combined_non_pad_mask = torch.cat([non_pad_mask, torch.zeros_like(non_pad_mask)], dim=1)
+        _combined_non_pad_mask = torch.cat([non_pad_mask, non_pad_mask], dim=1)
 
         for enc_layer in self.layer_stack:
             # enc_output, _ = enc_layer(
@@ -106,7 +106,7 @@ class Encoder(nn.Module):
                 _combined_input,
                 non_pad_mask=_combined_non_pad_mask,
                 slf_attn_mask=_combined_mask)
-            layer_ = torch.tanh(enc_output[:, :enc_input.size(1), :])
+            layer_ = torch.tanh(enc_output[:, enc_input.size(1):, :])
         # print(enc_output.shape)
         # return enc_output
         return layer_
