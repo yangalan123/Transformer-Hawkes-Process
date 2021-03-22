@@ -69,7 +69,8 @@ def train_epoch(model, training_data, optimizer, pred_loss_func, opt):
 
         # SE is usually large, scale it to stabilize training
         scale_time_loss = 100
-        loss = event_loss + pred_loss + se / scale_time_loss
+        #loss = event_loss + pred_loss + se / scale_time_loss
+        loss = event_loss
         loss.backward()
 
         """ update parameters """
@@ -164,7 +165,7 @@ def train(model, training_data, validation_data, optimizer, scheduler, pred_loss
             f.write('{epoch}, {ll: 8.5f}, {acc: 8.5f}, {rmse: 8.5f}\n'
                     .format(epoch=epoch, ll=valid_event, acc=valid_type, rmse=valid_time))
 
-        scheduler.step()
+        #scheduler.step()
 
 
 def main():

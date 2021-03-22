@@ -58,7 +58,7 @@ def compute_integral_unbiased_jhu(model, data, types, time, non_pad_mask, type_m
     """ Log-likelihood of non-events, using Monte Carlo integration. """
 
     num_samples = 100
-    step = 4
+    step = 20
 
     diff_time = (time[:, 1:] - time[:, :-1]) * non_pad_mask[:, 1:]
     temp_time = diff_time.unsqueeze(0) * \
