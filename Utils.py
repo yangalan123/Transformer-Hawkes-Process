@@ -63,7 +63,8 @@ def compute_integral_unbiased_jhu(model, data, types, time, non_pad_mask, type_m
     diff_time = (time[:, 1:] - time[:, :-1]) * non_pad_mask[:, 1:]
     temp_time = diff_time.unsqueeze(0) * \
                 torch.rand([num_samples, *diff_time.size()], device=data.device)
-    temp_time /= (time[:, :-1] + 1).unsqueeze(0)
+    temp_time += time[:, :-1].unsqueeze(0)
+    # temp_time /= (time[:, :-1] + 1).unsqueeze(0)
 
     all_lambda = []
     batch_size = types.size(0)
