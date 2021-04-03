@@ -207,6 +207,7 @@ class Transformer(nn.Module):
 
         enc_output = self.encoder(event_type, event_time, non_pad_mask, extra_times)
         # enc_output = self.rnn(enc_output, non_pad_mask)
+        self.type_predictor.linear = self.linear
 
         time_prediction = self.time_predictor(enc_output, non_pad_mask)
 

@@ -12,7 +12,7 @@ dropout=0
 lr=8e-3
 smooth=0
 epoch=100
-log=log_bs1_no_sch_mle_loss_lr8e-3.txt
+log=debug_log_bs1_no_sch_mle_loss_lr8e-3_layer1.txt
 
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=$device python Main.py -data $data -batch $batch -n_head $n_head -n_layers $n_layers -d_model $d_model -d_rnn $d_rnn -d_inner $d_inner -d_k $d_k -d_v $d_v -dropout $dropout -lr $lr -smooth $smooth -epoch $epoch -log $log
 echo "Press 'q' to exit"
