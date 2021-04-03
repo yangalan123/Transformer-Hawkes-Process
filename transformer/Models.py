@@ -168,6 +168,7 @@ class Transformer(nn.Module):
 
         # prediction of next event type
         self.type_predictor = Predictor(d_model, num_types)
+        self.type_predictor.linear = self.linear
 
     def forward(self, event_type, event_time):
         """
