@@ -45,7 +45,7 @@ def compute_integral_unbiased(model, data, time, non_pad_mask, type_mask):
                 torch.rand([*diff_time.size(), num_samples], device=data.device)
     temp_time /= (time[:, :-1] + 1).unsqueeze(2)
 
-    temp_hid = model.linear(data)[:, 1:, :]
+    temp_hid = model.linear(data)[:, :-1, :]
     #temp_hid = torch.sum(temp_hid * type_mask[:, 1:, :], dim=2, keepdim=True)
 
     all_lambda = softplus(temp_hid.unsqueeze(-1) + model.alpha * temp_time.unsqueeze(-2), model.beta).sum(dim=2)
