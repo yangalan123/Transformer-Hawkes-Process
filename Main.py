@@ -69,7 +69,8 @@ def train_epoch(model, training_data, optimizer, pred_loss_func, opt):
 
         # SE is usually large, scale it to stabilize training
         scale_time_loss = 100
-        loss = event_loss + pred_loss + se / scale_time_loss
+        #loss = event_loss + pred_loss + se / scale_time_loss
+        loss = event_loss
         loss.backward()
 
         """ update parameters """
@@ -129,6 +130,7 @@ def train(model, training_data, validation_data, optimizer, scheduler, pred_loss
     valid_event_losses = []  # validation log-likelihood
     valid_pred_losses = []  # validation event type prediction accuracy
     valid_rmse = []  # validation event time prediction RMSE
+    best_event_ll = -999999
     for epoch_i in range(opt.epoch):
         epoch = epoch_i + 1
         print('[ Epoch', epoch, ']')
@@ -146,6 +148,10 @@ def train(model, training_data, validation_data, optimizer, scheduler, pred_loss
               'accuracy: {type: 8.5f}, RMSE: {rmse: 8.5f}, '
               'elapse: {elapse:3.3f} min'
               .format(ll=valid_event, type=valid_type, rmse=valid_time, elapse=(time.time() - start) / 60))
+        if valid_event > best_event_ll:
+           best_event_ll = valid_event
+           torch.save(model.state_dict(), "model.pt")
+           print("---(Best model save)----")
 
         valid_event_losses += [valid_event]
         valid_pred_losses += [valid_type]
