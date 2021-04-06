@@ -19,7 +19,10 @@ def prepare_dataloader(opt):
 
     def load_data(name, dict_name):
         with open(name, 'rb') as f:
-            data = pickle.load(f, encoding='latin-1')
+            try:
+                data = pickle.load(f, encoding='latin-1')
+            except:
+                data = pickle.load(f)
             num_types = data['dim_process']
             data = data[dict_name]
             return data, int(num_types)
@@ -33,6 +36,7 @@ def prepare_dataloader(opt):
 
     trainloader = get_dataloader(train_data, opt.batch_size, shuffle=True)
     testloader = get_dataloader(test_data, opt.batch_size, shuffle=False)
+    # testloader = get_dataloader(dev_data, opt.batch_size, shuffle=False)
     return trainloader, testloader, num_types
 
 
