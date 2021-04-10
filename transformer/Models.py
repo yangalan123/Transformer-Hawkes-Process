@@ -25,7 +25,7 @@ def get_attn_key_pad_mask(seq_k, seq_q):
     return padding_mask
 
 
-def get_subsequent_mask(seq):
+def get_subsequent_mask(seq, after_happen=False):
     """ For masking out the subsequent info, i.e., masked self-attention. """
 
     sz_b, len_s = seq.size()
@@ -69,12 +69,12 @@ class Encoder(nn.Module):
         result[:, :, 1::2] = torch.cos(result[:, :, 1::2])
         return result * non_pad_mask
 
-    def forward(self, event_type, event_time, non_pad_mask):
+    def forward(self, event_type, event_time, non_pad_mask, after_happen=False):
         """ Encode event sequences via masked self-attention. """
 
         # prepare attention masks
         # slf_attn_mask is where we cannot look, i.e., the future and the padding
-        slf_attn_mask_subseq = get_subsequent_mask(event_type)
+        slf_attn_mask_subseq = get_subsequent_mask(event_type, after_happen)
         slf_attn_mask_keypad = get_attn_key_pad_mask(seq_k=event_type, seq_q=event_type)
         slf_attn_mask_keypad = slf_attn_mask_keypad.type_as(slf_attn_mask_subseq)
         slf_attn_mask = (slf_attn_mask_keypad + slf_attn_mask_subseq).gt(0)
@@ -170,7 +170,7 @@ class Transformer(nn.Module):
         self.type_predictor = Predictor(d_model, num_types)
         self.type_predictor.linear = self.linear
 
-    def forward(self, event_type, event_time):
+    def forward(self, event_type, event_time, after_happen=False):
         """
         Return the hidden representations and predictions.
         For a sequence (l_1, l_2, ..., l_N), we predict (l_2, ..., l_N, l_{N+1}).
@@ -183,7 +183,7 @@ class Transformer(nn.Module):
 
         non_pad_mask = get_non_pad_mask(event_type)
 
-        enc_output = self.encoder(event_type, event_time, non_pad_mask)
+        enc_output = self.encoder(event_type, event_time, non_pad_mask, after_happen)
         #enc_output = self.rnn(enc_output, non_pad_mask)
 
         time_prediction = self.time_predictor(enc_output, non_pad_mask)

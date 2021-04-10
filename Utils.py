@@ -67,6 +67,7 @@ def log_likelihood(model, data, time, types):
         # corrected version
         type_mask[:, :-1, i] = (types[:, 1:] == i + 1).bool().to(data.device)
 
+    data, prediction = model(types, time, after_happen=True)
     all_hid = model.linear(data)
     all_lambda = softplus(all_hid, model.beta)
     type_lambda = torch.sum(all_lambda * type_mask, dim=2)
